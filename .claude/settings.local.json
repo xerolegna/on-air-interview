@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Start-Process cmd -ArgumentList '/k', 'echo === GitHub sign-in === && echo Keep this window open until you see: Logged in as xerolegna && echo. && gh auth login -h github.com -p https --web')",
+      "PowerShell(Get-Process cmd -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process gh -ErrorAction SilentlyContinue)"
+    ]
+  }
+}

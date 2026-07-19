@@ -481,37 +481,56 @@ function setListening(on) {
   $("micBtn").textContent = on ? "■" : "🎙";
 }
 // ── Text-to-speech voice selection ─────────────────────────────
-// Prefer the browser's neural "Natural/Online" voices (Edge ships these) over
-// the old robotic local ones, and honor the woman/man choice.
-const FEMALE_HINTS = ["aria", "jenny", "emma", "ava", "michelle", "ana", "libby", "maisie", "sonia", "natasha", "clara", "hazel", "zira", "susan", "female"];
-const MALE_HINTS   = ["guy", "andrew", "brian", "christopher", "eric", "steffan", "roger", "ryan", "thomas", "william", "liam", "davis", "david", "mark", "george", "male"];
+// Prefer the browser's premium voices — Edge's "Natural" neural voices,
+// Chrome's "Google US English", macOS "Premium/Siri" — over the old robotic
+// local ones, and honor the woman/man choice.
+const PREMIUM_RE   = /natural|neural|online|google|premium|enhanced|siri/i;
+const FEMALE_HINTS = ["aria", "jenny", "emma", "ava", "michelle", "ana", "libby", "maisie", "sonia", "natasha", "clara", "hazel", "zira", "susan", "samantha", "google us english", "uk english female", "female"];
+const MALE_HINTS   = ["guy", "andrew", "brian", "christopher", "eric", "steffan", "roger", "ryan", "thomas", "william", "liam", "davis", "david", "mark", "george", "alex", "daniel", "uk english male", "male"];
 
 let ttsVoices = [];
 function refreshVoices() {
   try { ttsVoices = speechSynthesis.getVoices() || []; } catch (e) {}
 }
 if (window.speechSynthesis) {
+  // Chrome/Safari load their high-quality voices asynchronously a moment
+  // after page load — without this hook the first utterance can fall back
+  // to a robotic local voice.
   refreshVoices();
   if (speechSynthesis.addEventListener) speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+  else if ("onvoiceschanged" in speechSynthesis) speechSynthesis.onvoiceschanged = refreshVoices;
 }
 
 function pickVoice(sex) {
   const en = ttsVoices.filter(v => v.lang && v.lang.toLowerCase().startsWith("en"));
   const hints = sex === "man" ? MALE_HINTS : FEMALE_HINTS;
-  const byHint = list => list.find(v => hints.some(h => v.name.toLowerCase().includes(h)));
-  const natural = en.filter(v => /natural|neural|online/i.test(v.name));
-  return byHint(natural) || byHint(en) || natural[0] || en[0] || null;
+  const byHint = list => {
+    // "male" would substring-match "female" — hard-exclude female voices
+    // when a man's voice is requested. Earlier hints win over later ones.
+    const pool = sex === "man" ? list.filter(v => !/female/i.test(v.name)) : list;
+    for (const h of hints) {
+      const found = pool.find(v => v.name.toLowerCase().includes(h));
+      if (found) return found;
+    }
+    return null;
+  };
+  const premium = en.filter(v => PREMIUM_RE.test(v.name));
+  return byHint(premium) || byHint(en) || premium[0] || en[0] || null;
 }
 
 function speak(text) {
   if (!cfg.voiceOn || !window.speechSynthesis) return;
+  if (!text || !text.trim()) return;
   refreshVoices();
-  speechSynthesis.cancel();
+  if (speechSynthesis.speaking) speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice(cfg.voiceSex);
   if (v) { u.voice = v; u.lang = v.lang; }
-  u.rate = 1.04;
+  // Slightly slower than default — browser TTS reads faster than natural
+  // conversation; 0.95 leaves room for pauses at punctuation.
+  u.rate = 0.95;
   u.pitch = 1;
+  u.onerror = e => console.error("SpeechSynthesis error:", e.error);
   speechSynthesis.speak(u);
 }
 
